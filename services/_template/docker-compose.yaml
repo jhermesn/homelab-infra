@@ -1,0 +1,45 @@
+networks:
+  homelab:
+    external: true
+    name: homelab
+
+services:
+  template-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: template-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_NAME: ${APP_NAME}
+      APP_ENV: ${APP_ENV}
+      APP_DEBUG: ${APP_DEBUG}
+      
+      # Database
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+      # Redis
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      
+      # OpenTelemetry
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_RESOURCE_ATTRIBUTES: service.name=${OTEL_SERVICE_NAME},environment=${OTEL_ENVIRONMENT}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_FORMAT: ${LOG_FORMAT}
+
+    networks:
+      - homelab
+    labels:
+      - "logging=promtail"
+      - "service=${APP_NAME}"

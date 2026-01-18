@@ -1,0 +1,32 @@
+services:
+  demo-crud:
+    build: .
+    container_name: demo-crud
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - APP_ENV=${APP_ENV}
+      # MySQL
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      # Redis
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      # OpenTelemetry
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+    networks:
+      - homelab
+    labels:
+      - "logging=promtail"
+      - "service=${APP_NAME:-demo-crud}"
+
+networks:
+  homelab:
+    external: true
+    name: homelab

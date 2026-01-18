@@ -1,0 +1,16 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Discord
+    receivers:
+      - uid: discord-1
+        type: discord
+        settings:
+          url: ${DISCORD_WEBHOOK_URL}
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: Discord
+    group_by: ['grafana_folder', 'alertname']

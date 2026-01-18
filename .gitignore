@@ -1,0 +1,14 @@
+# Homelab Infrastructure
+.env
+*.log
+
+# Nginx Proxy Manager
+config/npm/
+
+# Rclone
+config/rclone/
+
+# Observability Data
+loki_data/
+promtail_data/
+tempo-data/

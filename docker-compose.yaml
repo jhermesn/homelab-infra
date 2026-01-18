@@ -1,0 +1,384 @@
+# I have currently setup the following services in this docker-compose file:
+# - MySQL
+# - Redis
+# - Loki
+# - Promtail
+# - Grafana
+# - Dockge
+# - OpenTelemetry Collector
+# - Prometheus
+# - Nginx Proxy Manager (Gateway)
+
+networks:
+  homelab:
+    name: ${NETWORK_NAME}
+    driver: bridge
+
+volumes:
+  mysql_data:
+    name: ${MYSQL_DATA}
+  redis_data:
+    name: ${REDIS_DATA}
+  redis_insight_data:
+    name: ${REDIS_INSIGHT_DATA}
+  grafana_data:
+    name: ${GRAFANA_DATA}
+  prometheus_data:
+    name: ${PROMETHEUS_DATA}
+  loki_data:
+    name: ${LOKI_DATA}
+  uptime_kuma_data:
+    name: ${UPTIME_KUMA_DATA}
+  dockge_data:
+    name: ${DOCKGE_DATA}
+  portainer_data:
+    name: ${PORTAINER_DATA}
+  npm_data:
+    name: ${NPM_DATA}
+  npm_letsencrypt:
+    name: ${NPM_LETSENCRYPT}
+
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    container_name: ${MYSQL_CONTAINER_NAME:-homelab-mysql}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./config/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "logging=promtail"
+      - "service=mysql"
+
+  adminer:
+    image: ${ADMINER_IMAGE:-adminer:latest}
+    container_name: ${ADMINER_CONTAINER_NAME:-homelab-adminer}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${ADMINER_PORT}:8080"
+    networks:
+      - homelab
+    depends_on:
+      - mysql
+    environment:
+      ADMINER_DESIGN: "${ADMINER_DESIGN:-hydra}"
+    labels:
+      - "logging=promtail"
+      - "service=adminer"
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: ${REDIS_CONTAINER_NAME:-homelab-redis}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    command: redis-server --appendonly ${REDIS_APPENDONLY:-yes} --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging=promtail"
+      - "service=redis"
+
+  redis-insight:
+    image: ${REDIS_INSIGHT_IMAGE:-redis/redisinsight:latest}
+    container_name: ${REDIS_INSIGHT_CONTAINER_NAME:-homelab-redis-insight}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${REDIS_INSIGHT_PORT}:5540"
+    volumes:
+      - redis_insight_data:/data
+    networks:
+      - homelab
+    depends_on:
+      - redis
+    labels:
+      - "logging=promtail"
+      - "service=redis-insight"
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:2.9.0}
+    container_name: ${LOKI_CONTAINER_NAME:-homelab-loki}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${LOKI_PORT}:3100"
+    volumes:
+      - ./config/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging=promtail"
+      - "service=loki"
+
+  promtail:
+    image: ${PROMTAIL_IMAGE:-grafana/promtail:2.9.0}
+    container_name: ${PROMTAIL_CONTAINER_NAME:-homelab-promtail}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    volumes:
+      - ./config/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/log:/var/log:ro
+      - ${DOCKER_CONTAINERS_LIB:-/var/lib/docker/containers}:${DOCKER_CONTAINERS_LIB:-/var/lib/docker/containers}:ro
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - homelab
+    depends_on:
+      loki:
+        condition: service_healthy
+    labels:
+      - "logging=promtail"
+      - "service=promtail"
+
+  tempo:
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.3.1}
+    container_name: ${TEMPO_CONTAINER_NAME:-homelab-tempo}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./config/tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - ./tempo-data:/tmp/tempo
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${TEMPO_PORT}:3200"
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging=promtail"
+      - "service=tempo"
+
+  backup-logs:
+    image: ${RCLONE_IMAGE:-rclone/rclone:latest}
+    container_name: ${BACKUP_LOGS_CONTAINER_NAME:-homelab-backup-logs}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      - SHAREPOINT_REMOTE_NAME=${SHAREPOINT_REMOTE_NAME}
+      - BACKUP_DEST_PATH=${BACKUP_DEST_PATH}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL}
+    volumes:
+      - loki_data:/data/loki
+      - ./tempo-data:/data/tempo
+      - ./config/rclone:/config/rclone
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Starting backup service..."
+        while true; do
+          if [ -f "/config/rclone/rclone.conf" ] && grep -q "\[$SHAREPOINT_REMOTE_NAME\]" /config/rclone/rclone.conf; then
+            echo "[$(date)] Starting backup for $SHAREPOINT_REMOTE_NAME..."
+            
+            # Loki Backup
+            echo ">> Copying Logs (Loki)..."
+            rclone copy /data/loki $SHAREPOINT_REMOTE_NAME:$BACKUP_DEST_PATH/loki --transfers 4 --checkers 8 --verbose
+            
+            # Tempo Backup
+            echo ">> Copying Traces (Tempo)..."
+            rclone copy /data/tempo $SHAREPOINT_REMOTE_NAME:$BACKUP_DEST_PATH/tempo --transfers 4 --checkers 8 --verbose
+            
+            echo "[$(date)] Backup concluido."
+          else
+            echo "[$(date)] ERROR: Rclone '$SHAREPOINT_REMOTE_NAME' not configured."
+            echo "Run: docker run -it --rm -v $(pwd)/config/rclone:/config/rclone rclone/rclone config"
+          fi
+          # waits for the specified interval before next backup
+          sleep $BACKUP_INTERVAL
+        done
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.55.1}
+    container_name: ${PROMETHEUS_CONTAINER_NAME:-homelab-prometheus}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT}:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging=promtail"
+      - "service=prometheus"
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.88.0}
+    container_name: ${OTEL_COLLECTOR_CONTAINER_NAME:-homelab-otel-collector}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${OTEL_GRPC_PORT}:4317"
+      - "${BIND_ADDRESS:-127.0.0.1}:${OTEL_HTTP_PORT}:4318"
+      - "${BIND_ADDRESS:-127.0.0.1}:${OTEL_METRICS_PORT}:8888"
+      - "${BIND_ADDRESS:-127.0.0.1}:${OTEL_HEALTH_PORT}:13133"
+    volumes:
+      - ./config/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    networks:
+      - homelab
+    depends_on:
+      - prometheus
+      - loki
+    labels:
+      - "logging=promtail"
+      - "service=otel-collector"
+
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:latest}
+    container_name: ${NODE_EXPORTER_CONTAINER_NAME:-homelab-node-exporter}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)'
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${NODE_EXPORTER_PORT}:9100"
+    networks:
+      - homelab
+    labels:
+      - "logging=promtail"
+      - "service=node-exporter"
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:10.2.0}
+    container_name: ${GRAFANA_CONTAINER_NAME:-homelab-grafana}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "${GRAFANA_ALLOW_SIGN_UP:-false}"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - homelab
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging=promtail"
+      - "service=grafana"
+
+  uptime-kuma:
+    image: ${UPTIME_KUMA_IMAGE:-louislam/uptime-kuma:1}
+    container_name: ${UPTIME_KUMA_CONTAINER_NAME:-homelab-uptime-kuma}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${UPTIME_KUMA_PORT}:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    networks:
+      - homelab
+    labels:
+      - "logging=promtail"
+      - "service=uptime-kuma"
+
+  dockge:
+    image: ${DOCKGE_IMAGE:-louislam/dockge:1}
+    container_name: ${DOCKGE_CONTAINER_NAME:-homelab-dockge}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${DOCKGE_PORT}:5001"
+    volumes:
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      - dockge_data:/app/data
+      - ./services:/opt/stacks
+    environment:
+      - DOCKGE_STACKS_DIR=/opt/stacks
+    networks:
+      - homelab
+    labels:
+      - "logging=promtail"
+      - "service=dockge"
+
+  npm:
+    image: ${NPM_IMAGE:-jc21/nginx-proxy-manager:latest}
+    container_name: ${NPM_CONTAINER_NAME:-homelab-npm}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    ports:
+      - '${NPM_HTTP_PORT}:80'
+      - '${NPM_ADMIN_PORT}:81'
+      - '${NPM_HTTPS_PORT}:443'
+    volumes:
+      - ./config/npm/data:/data
+      - ./config/npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "/bin/check-health"]
+      interval: 10s
+      timeout: 3s
+    labels:
+      - "logging=promtail"
+      - "service=npm"
+
+  tunnel:
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:latest}
+    container_name: ${TUNNEL_CONTAINER_NAME:-homelab-tunnel}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARED_TOKEN}
+    networks:
+      - homelab
+    labels:
+      - "logging=promtail"
+      - "service=cloudflared"
