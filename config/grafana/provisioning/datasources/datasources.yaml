@@ -13,6 +13,15 @@ datasources:
       prometheusType: Prometheus
       prometheusVersion: "2.55.1"
 
+  - name: Mimir
+    type: prometheus
+    access: proxy
+    url: http://mimir:9009/prometheus
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+
   - name: Tempo
     type: tempo
     access: proxy

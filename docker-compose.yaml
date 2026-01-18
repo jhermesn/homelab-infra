@@ -29,6 +29,8 @@ volumes:
     name: ${LOKI_DATA}
   uptime_kuma_data:
     name: ${UPTIME_KUMA_DATA}
+  mimir_data:
+    name: ${MIMIR_DATA}
   dockge_data:
     name: ${DOCKGE_DATA}
   portainer_data:
@@ -178,6 +180,27 @@ services:
       - "logging=promtail"
       - "service=tempo"
 
+  mimir:
+    image: ${MIMIR_IMAGE:-grafana/mimir:2.10.3}
+    container_name: ${MIMIR_CONTAINER_NAME:-homelab-mimir}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    volumes:
+      - ./config/mimir/mimir.yaml:/etc/mimir.yaml
+      - mimir_data:/data
+    command: ["-config.file=/etc/mimir.yaml"]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${MIMIR_PORT}:9009"
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9009/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "logging=promtail"
+      - "service=mimir"
+
   backup-logs:
     image: ${RCLONE_IMAGE:-rclone/rclone:latest}
     container_name: ${BACKUP_LOGS_CONTAINER_NAME:-homelab-backup-logs}
@@ -189,6 +212,7 @@ services:
     volumes:
       - loki_data:/data/loki
       - ./tempo-data:/data/tempo
+      - mimir_data:/data/mimir
       - ./config/rclone:/config/rclone
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -205,6 +229,10 @@ services:
             # Tempo Backup
             echo ">> Copying Traces (Tempo)..."
             rclone copy /data/tempo $SHAREPOINT_REMOTE_NAME:$BACKUP_DEST_PATH/tempo --transfers 4 --checkers 8 --verbose
+
+            # Mimir Backup
+            echo ">> Copying Metrics (Mimir)..."
+            rclone copy /data/mimir $SHAREPOINT_REMOTE_NAME:$BACKUP_DEST_PATH/mimir --transfers 4 --checkers 8 --verbose
             
             echo "[$(date)] Backup concluido."
           else

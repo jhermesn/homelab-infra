@@ -184,6 +184,20 @@ start_all_services() {
     log_success "All services startup sequence completed."
 }
 
+stop_all_services() {
+    log_info "Stopping all detected services..."
+    if [ -d "$SERVICES_DIR" ]; then
+        for dir in "${SERVICES_DIR}"/*/; do
+            local name
+            name=$(basename "$dir")
+            if [[ "$name" != "_template" && "$name" != "demo-crud" ]] && [ -f "${dir}/docker-compose.yaml" ]; then
+                stop_service "$name"
+            fi
+        done
+    fi
+    log_success "All services stop sequence completed."
+}
+
 # --- Main CLI
 
 show_help() {
@@ -194,7 +208,7 @@ show_help() {
     echo "Commands:"
     echo "  infra [start|stop]          Manage base infrastructure (default: start)"
     echo "  service <name> [start|stop] Manage specific services"
-    echo "  all                         Start infrastructure and all services"
+    echo "  all [start|stop]            Start/Stop infrastructure and all services (default: start)"
     echo "  list                        List available services"
     echo "  status                      Show status of running containers"
     echo "  logs <container>            Show logs of a container"
@@ -220,9 +234,16 @@ main() {
             if [[ "$action" == "stop" ]]; then stop_service "$arg2"; else start_service "$arg2"; fi
             ;;
         (all)
-            start_infrastructure
-            echo ""
-            start_all_services
+            local action="${arg2:-start}"
+            if [[ "$action" == "stop" ]]; then
+                stop_all_services
+                echo ""
+                stop_infrastructure
+            else
+                start_infrastructure
+                echo ""
+                start_all_services
+            fi
             ;;
         (list)   list_services ;;
         (status) 
