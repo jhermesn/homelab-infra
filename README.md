@@ -6,20 +6,27 @@ Microservices and observability infrastructure based on Docker, focused on secur
 # Architecture
 
 ## Diagram
-![Architecture Diagram](./homelab.png)
+![Architecture Diagram](./Homelab.png)
 
 ## Services (Base Infrastructure)
 
 | Service | Internal Host | Default Port | Function |
 |---------|--------------|--------------|--------|
 | **Nginx Proxy Manager** | `homelab-npm` | `8090` (HTTP) / `4443` (HTTPS) | Gateway & SSL |
+| **Cloudflare Tunnel** | `homelab-tunnel` | N/A (Outbound) | Secure Remote Access |
 | **MySQL 8** | `homelab-mysql` | `3306` | Relational Database |
+| **Adminer** | `homelab-adminer` | `8080` | Database Management |
 | **Redis** | `homelab-redis` | `6379` | Cache & Messaging |
+| **Redis Insight** | `homelab-redis-insight` | `5540` | Redis GUI |
 | **Grafana** | `homelab-grafana` | `3000` | Data Visualization |
 | **Loki** | `homelab-loki` | `3100` | Log Aggregation |
+| **Promtail** | `homelab-promtail` | N/A (Internal) | Log Shipping |
 | **Tempo** | `homelab-tempo` | `3200` | Distributed Tracing (Traces) |
 | **Prometheus** | `homelab-prometheus` | `9090` | Metrics Collection |
+| **Mimir** | `homelab-mimir` | `9009` | Long-term Metrics Storage |
+| **Uptime Kuma** | `homelab-uptime-kuma` | `3001` | Status Page & Monitoring |
 | **OTEL Collector** | `homelab-otel-collector` | `4317` (gRPC) / `4318` (HTTP) | Telemetry Ingestion |
+| **Node Exporter** | `homelab-node-exporter` | `9100` | Host Metrics |
 | **Dockge** | `homelab-dockge` | `5001` | Docker Web Management |
 | **Backup (Rclone)** | *Sidecar* | N/A | Automatic Off-site Backup |
 
