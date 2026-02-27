@@ -176,7 +176,7 @@ start_all_services() {
         for dir in "${SERVICES_DIR}"/*/; do
             local name
             name=$(basename "$dir")
-            if [[ "$name" != "_template" && "$name" != "demo-crud" ]] && [ -f "${dir}/docker-compose.yaml" ]; then
+            if [[ "$name" != "_template" && "$name" != "demo-crud" ]] && { [ -f "${dir}/docker-compose.yaml" ] || [ -f "${dir}/docker-compose.yml" ]; }; then
                 start_service "$name"
             fi
         done
@@ -190,7 +190,7 @@ stop_all_services() {
         for dir in "${SERVICES_DIR}"/*/; do
             local name
             name=$(basename "$dir")
-            if [[ "$name" != "_template" && "$name" != "demo-crud" ]] && [ -f "${dir}/docker-compose.yaml" ]; then
+            if [[ "$name" != "_template" && "$name" != "demo-crud" ]] && { [ -f "${dir}/docker-compose.yaml" ] || [ -f "${dir}/docker-compose.yml" ]; }; then
                 stop_service "$name"
             fi
         done
