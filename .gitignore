@@ -12,3 +12,6 @@ config/rclone/
 loki_data/
 promtail_data/
 tempo-data/
+
+# local services
+services/
