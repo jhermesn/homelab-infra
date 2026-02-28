@@ -33,11 +33,16 @@ ingester:
     replication_factor: 1
 
 ruler:
-  rule_path: /data/mimir/rules
+  rule_path: /data/mimir/ruler-scratch
   alertmanager_url: http://127.0.0.1:8080/alertmanager
   ring:
     kvstore:
       store: memberlist
+
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/mimir/rules
 
 store_gateway:
   sharding_ring:
